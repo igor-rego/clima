@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy para API - Weather Dashboard</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .proxy-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #0056b3;
+        }
+        .result {
+            background: #f8f9fa;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 15px;
+            margin: 10px 0;
+            white-space: pre-wrap;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error {
+            background: #f8d7da;
+            border-color: #f5c6cb;
+            color: #721c24;
+        }
+        .success {
+            background: #d4edda;
+            border-color: #c3e6cb;
+            color: #155724;
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+    </style>
+</head>
+<body>
+    <h1>🌐 Proxy para API Open-Meteo</h1>
+    
+    <div class="proxy-section">
+        <h2>1. Teste de Geocoding com JSONP</h2>
+        <input type="text" id="cityInput" placeholder="Digite o nome da cidade..." value="São Paulo">
+        <button onclick="testJSONPGeocoding()">Testar JSONP Geocoding</button>
+        <div id="jsonp-result" class="result"></div>
+    </div>
+    
+    <div class="proxy-section">
+        <h2>2. Teste de Weather com JSONP</h2>
+        <button onclick="testJSONPWeather()">Testar JSONP Weather</button>
+        <div id="jsonp-weather-result" class="result"></div>
+    </div>
+    
+    <div class="proxy-section">
+        <h2>3. Teste de CORS com diferentes métodos</h2>
+        <button onclick="testCORSMethods()">Testar Métodos CORS</button>
+        <div id="cors-result" class="result"></div>
+    </div>
+
+    <script>
+        function showResult(elementId, data, isError = false) {
+            const element = document.getElementById(elementId);
+            element.textContent = JSON.stringify(data, null, 2);
+            element.className = `result ${isError ? 'error' : 'success'}`;
+        }
+        
+        // JSONP approach for geocoding
+        function testJSONPGeocoding() {
+            const cityName = document.getElementById('cityInput').value;
+            const callbackName = 'geocodingCallback' + Date.now();
+            
+            // Create global callback
+            window[callbackName] = function(data) {
+                showResult('jsonp-result', {
+                    method: 'JSONP',
+                    city: cityName,
+                    data: data
+                });
+                
+                // Clean up
+                delete window[callbackName];
+                document.head.removeChild(script);
+            };
+            
+            // Create script tag
+            const script = document.createElement('script');
+            script.src = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=5&language=pt&format=json&callback=${callbackName}`;
+            
+            // Handle errors
+            script.onerror = function() {
+                showResult('jsonp-result', {
+                    method: 'JSONP',
+                    city: cityName,
+                    error: 'Failed to load script'
+                }, true);
+                delete window[callbackName];
+            };
+            
+            document.head.appendChild(script);
+        }
+        
+        // JSONP approach for weather
+        function testJSONPWeather() {
+            const callbackName = 'weatherCallback' + Date.now();
+            
+            window[callbackName] = function(data) {
+                showResult('jsonp-weather-result', {
+                    method: 'JSONP',
+                    data: data
+                });
+                
+                delete window[callbackName];
+                document.head.removeChild(script);
+            };
+            
+            const script = document.createElement('script');
+            script.src = `https://api.open-meteo.com/v1/forecast?latitude=-23.5505&longitude=-46.6333&current=temperature_2m&timezone=auto&callback=${callbackName}`;
+            
+            script.onerror = function() {
+                showResult('jsonp-weather-result', {
+                    method: 'JSONP',
+                    error: 'Failed to load script'
+                }, true);
+                delete window[callbackName];
+            };
+            
+            document.head.appendChild(script);
+        }
+        
+        // Test different CORS methods
+        async function testCORSMethods() {
+            const results = [];
+            
+            // Method 1: Simple fetch
+            try {
+                const response = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=São Paulo&count=1&language=pt&format=json');
+                const data = await response.json();
+                results.push({
+                    method: 'Simple Fetch',
+                    status: response.status,
+                    success: true,
+                    data: data
+                });
+            } catch (error) {
+                results.push({
+                    method: 'Simple Fetch',
+                    success: false,
+                    error: error.message
+                });
+            }
+            
+            // Method 2: Fetch with headers
+            try {
+                const response = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=São Paulo&count=1&language=pt&format=json', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = await response.json();
+                results.push({
+                    method: 'Fetch with Headers',
+                    status: response.status,
+                    success: true,
+                    data: data
+                });
+            } catch (error) {
+                results.push({
+                    method: 'Fetch with Headers',
+                    success: false,
+                    error: error.message
+                });
+            }
+            
+            // Method 3: Fetch with CORS mode
+            try {
+                const response = await fetch('https://geocoding-api.open-meteo.com/v1/search?name=São Paulo&count=1&language=pt&format=json', {
+                    method: 'GET',
+                    mode: 'cors',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                const data = await response.json();
+                results.push({
+                    method: 'Fetch with CORS Mode',
+                    status: response.status,
+                    success: true,
+                    data: data
+                });
+            } catch (error) {
+                results.push({
+                    method: 'Fetch with CORS Mode',
+                    success: false,
+                    error: error.message
+                });
+            }
+            
+            showResult('cors-result', {
+                timestamp: new Date().toISOString(),
+                results: results
+            });
+        }
+        
+        // Auto-run tests on page load
+        window.addEventListener('load', () => {
+            console.log('🌐 Starting proxy tests...');
+            setTimeout(testCORSMethods, 1000);
+        });
+    </script>
+</body>
+</html> 
